@@ -1,224 +1,81 @@
 package org.example;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 
-import org.apache.commons.logging.Log;
-
+import java.awt.*;
 import java.io.File;
 import java.io.IOException;
-import java.time.OffsetDateTime;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.Objects;
+import java.util.List;
 
 public class LeadDup {
-  public static class Lead {
-    private String _id;
-    private String email;
-    private String firstName;
-    private String lastName;
-    private String address;
-    private String entryDate;
-    private int originalIndex;
-
-    public Lead(JsonNode node, int originalIndex) {
-      this._id = node.has("id") ? node.get("id").asText() : "";
-      this.email = node.has("email") ? node.get("email").asText() : "";
-      this.firstName = node.has("firstName") ? node.get("firstName").asText() : "";
-      this.lastName = node.has("lastName") ? node.get("lastName").asText() : "";
-      this.address = node.has("address") ? node.get("address").asText() : "";
-      this.entryDate = node.has("entryDate") ? node.get("entryDate").asText() : "";
-      this.originalIndex = originalIndex;
-
-    }
-
-    public Lead(String id, String email, String firstName, String lastName, String address, String entryDate, int originalIndex) {
-      this._id = id;
-      this.email = email;
-      this.firstName = firstName;
-      this.lastName = lastName;
-      this.address = address;
-      this.entryDate = entryDate;
-      this.originalIndex = originalIndex;
-    }
-
-    public OffsetDateTime getParsedDate() {
-      return OffsetDateTime.parse(entryDate);
-    }
-
-    public boolean isNew(Lead l) {
-      int dateCompare = this.entryDate.compareTo(l.entryDate);
-      if (dateCompare != 0) {
-        return dateCompare > 0;
-      }
-      return this.originalIndex > l.originalIndex;
-    }
-
-    public JsonNode toJ(ObjectMapper obj) {
-      ObjectNode node = obj.createObjectNode();
-      node.put("_id", _id);
-      node.put("email", email);
-      node.put("firstName", firstName);
-      node.put("lastName", lastName);
-      node.put("address", address);
-      node.put("entryDate", entryDate);
-      return node;
-    }
-  }
-  public static class Changing{
-    public String dupType;
-    public Lead Record1;
-    public Lead Record2;
-    public List<FieldChange> fieldChanges;
-
-    public Changing(String dupType, Lead record1, Lead record2){
-      this.dupType = dupType;
-      this.Record1 = record1;
-      this.Record2 = record2;
-      this.fieldChanges = new ArrayList<>();
-      caculateChange();
-    }
-    private void caculateChange(){
-      changeifDifferent("firstName",Record1.firstName, Record2.firstName);
-      changeifDifferent("lastName",Record1.lastName, Record2.lastName);
-      changeifDifferent("address",Record1.address, Record2.address);
-      changeifDifferent("entryDate",Record1.entryDate, Record2.entryDate);
-    }
-
-    private void changeifDifferent(String field, String from, String to){
-      if(!Objects.equals(from, to)){
-        fieldChanges.add(new FieldChange(field, from, to));
-      }
-    }
-  }
-
-  public static class FieldChange{
-    public String fieldName;
-    public String initialValue;
-    public String toValue;
-
-    public FieldChange(String fieldName, String initialValue, String toValue){
-      this.fieldName = fieldName;
-      this.initialValue = initialValue;
-      this.toValue = toValue;
-    }
-
-    @Override
-    public String toString(){
-      return String.format("%s: '%s' -> '%s'", fieldName, initialValue, toValue);
-    }
-  }
-
-  public static class DeduplicationResult{
-    public List<Lead> Lead;
-    public List<Changing> Log;
-    public DeduplicationResult() {
-      this.Lead = new ArrayList<>();
-      this.Log = new ArrayList<>();
-    }
-  }
-
-  public static DeduplicationResult dupLeads(List<Lead> input){
+  public static DeduplicationResult dupLeads(List<Lead> input) {
     DeduplicationResult result = new DeduplicationResult();
+    Map<String, Lead> byId = new HashMap<>();
+    Map<String, Lead> byEmail = new HashMap<>();
 
-    Map<String, Lead> recordsById = new HashMap<>();
-    Map<String, Lead> recordsByEmail = new HashMap<>();
+    for (Lead current : input) {
+      Lead existing = byId.getOrDefault(current.getId(), byEmail.get(current.getEmail()));
+      String type = existing != null ? (byId.containsKey(current.getId()) ? "ID" : "EMAIL") : null;
 
-    for (Lead current : input){
-      Lead existingById = recordsById.get(current._id);
-      Lead existingByEmail = recordsByEmail.get(current.email);
+      if (existing != null) {
+        Lead keep = current.isNew(existing) ? current : existing;
+        Lead discard = (keep == current) ? existing : current;
 
-      Lead existing = null;
-      String dupType = null;
+        result.getLeads().remove(discard);
+        byId.remove(discard.getId());
+        byEmail.remove(discard.getEmail());
 
-      if(existingById != null){
-        existing = existingById;
-        dupType = "ID";
-      } else if (existingByEmail != null) {
-        existing = existingByEmail;
-        dupType = "EMAIL";
-      }
-
-      if(existing != null){
-        Lead toKeep, toDiscard;
-
-        if(current.isNew(existing)){
-          toKeep = current;
-          toDiscard = existing;
-
-          result.Lead.remove(existing);
-          recordsById.remove(existing._id);
-          recordsByEmail.remove(existing.email);
+        result.addLog(new ChangingPair(type, discard, keep));
+        if (keep == current) {
+          result.addLead(current);
+          byId.put(current.getId(), current);
+          byEmail.put(current.getEmail(), current);
         }
-        else{
-          toKeep = existing;
-          toDiscard = current;
-        }
-        result.Log.add(new Changing(dupType, toDiscard, toKeep));
-        if (toKeep == current) {
-          result.Lead.add(toKeep);
-          recordsById.put(toKeep._id, toKeep);
-          recordsByEmail.put(toKeep.email, toKeep);
-        }
-
       } else {
-        // No duplicate found - add to result and tracking maps
-        result.Lead.add(current);
-        recordsById.put(current._id, current);
-        recordsByEmail.put(current.email, current);
+        result.addLead(current);
+        byId.put(current.getId(), current);
+        byEmail.put(current.getEmail(), current);
       }
     }
+
     return result;
   }
-  public static void writeDeduplicatedResults(DeduplicationResult result, ObjectMapper mapper)
-          throws IOException {
 
-    ObjectNode outputRoot = mapper.createObjectNode();
-    ArrayNode outputArray = mapper.createArrayNode();
-
-    for (Lead lead : result.Lead) {
-      outputArray.add(lead.toJ(mapper));
-    }
-
-    outputRoot.set("leads", outputArray);
-
+  /**
+   * Writes deduplicated leads to a JSON file and logs summary.
+   */
+  public static void writeDeduplicatedResults(DeduplicationResult result, ObjectMapper mapper) throws IOException {
     mapper.writerWithDefaultPrettyPrinter()
-            .writeValue(new File("leads_deduplicated.json"), outputRoot);
-
+            .writeValue(new File("leads_deduplicated.json"), result.getLeads());
     System.out.println("Deduplicated results written to leads_deduplicated.json");
-    System.out.println("Original count: " + (result.Lead.size() + result.Log.size()));
-    System.out.println("Final count: " + result.Lead.size());
-    System.out.println("Duplicates removed: " + result.Log.size());
+    System.out.println("Original count: " + (result.getLeads().size() + result.getLog().size()));
+    System.out.println("Final count: " + result.getLeads().size());
+    System.out.println("Duplicates removed: " + result.getLog().size());
   }
 
+  /**
+   * Prints a change log for deduplication.
+   */
   public static void printChangeLog(DeduplicationResult result) {
     System.out.println("\n=== DEDUPLICATION CHANGE LOG ===");
-
-    if (result.Log.isEmpty()) {
+    if (result.getLog().isEmpty()) {
       System.out.println("No duplicates found.");
       return;
     }
-
-    for (int i = 0; i < result.Log.size(); i++) {
-      Changing log = result.Log.get(i);
-      System.out.printf("\nDuplicate #%d (Duplicate %s):\n", i + 1, log.dupType);
-      System.out.printf("  Discarded Record: ID=%s, Email=%s, Date=%s\n",
-              log.Record1._id, log.Record1.email, log.Record1.entryDate);
-      System.out.printf("  Kept Record:      ID=%s, Email=%s, Date=%s\n",
-              log.Record2._id, log.Record2.email, log.Record2.entryDate);
-
-      if (!log.fieldChanges.isEmpty()) {
+    int i = 1;
+    for (ChangingPair change : result.getLog()) {
+      System.out.printf("\nDuplicate #%d (Type: %s):\n", i++, change.getDupType());
+      System.out.printf("  Discarded: ID=%s, Email=%s, Date=%s\n",
+              change.getRecord1().getId(), change.getRecord1().getEmail(), change.getRecord1().getEntryDate());
+      System.out.printf("  Kept:      ID=%s, Email=%s, Date=%s\n",
+              change.getRecord2().getId(), change.getRecord2().getEmail(), change.getRecord2().getEntryDate());
+      if (!change.getFieldChanges().isEmpty()) {
         System.out.println("  Field Changes:");
-        for (FieldChange change : log.fieldChanges) {
-          System.out.printf("    %s\n", change);
-        }
+        change.getFieldChanges().forEach(fc -> System.out.println("    " + fc));
       } else {
-        System.out.println("  No field differences (records were identical except for duplicate key)");
+        System.out.println("  No field differences (records identical except for key)");
       }
     }
   }
