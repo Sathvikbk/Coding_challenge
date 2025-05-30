@@ -27,12 +27,12 @@ public class LeadDup {
     private int originalIndex;
 
     public Lead(JsonNode node, int originalIndex) {
-      this._id = node.get("id").asText();
-      this.email = node.get("email").asText();
-      this.firstName = node.get("firstName").asText();
-      this.lastName = node.get("lastName").asText();
-      this.address = node.get("address").asText();
-      this.entryDate = node.get("entryDate").asText();
+      this._id = node.has("id") ? node.get("id").asText() : "";
+      this.email = node.has("email") ? node.get("email").asText() : "";
+      this.firstName = node.has("firstName") ? node.get("firstName").asText() : "";
+      this.lastName = node.has("lastName") ? node.get("lastName").asText() : "";
+      this.address = node.has("address") ? node.get("address").asText() : "";
+      this.entryDate = node.has("entryDate") ? node.get("entryDate").asText() : "";
       this.originalIndex = originalIndex;
     }
 
