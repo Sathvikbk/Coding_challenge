@@ -34,6 +34,7 @@ public class LeadDup {
       this.address = node.has("address") ? node.get("address").asText() : "";
       this.entryDate = node.has("entryDate") ? node.get("entryDate").asText() : "";
       this.originalIndex = originalIndex;
+
     }
 
     public Lead(String id, String email, String firstName, String lastName, String address, String entryDate, int originalIndex) {
