@@ -1,0 +1,10 @@
+{
+  "leads" : [ {
+    "_id" : "",
+    "email" : "bill@bar.com",
+    "firstName" : "John",
+    "lastName" : "Smith",
+    "address" : "888 Mayberry St",
+    "entryDate" : "2014-05-07T17:33:20+00:00"
+  } ]
+}
